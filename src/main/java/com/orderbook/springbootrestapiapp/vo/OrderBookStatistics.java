@@ -15,6 +15,10 @@ public class OrderBookStatistics {
 	
 	private HashMap<BigDecimal, Long> limitSpread;
 	
+	private HashMap<BigDecimal, Long> limitSpreadForValidOrders;
+	
+	private HashMap<BigDecimal, Long> limitSpreadForInValidOrders;
+	
 	private HashMap<Long, String> orderStatus;
 	
 	private int noOfValidOrders;
@@ -35,6 +39,22 @@ public class OrderBookStatistics {
 	
 	private long orderId;
 	
+	public HashMap<BigDecimal, Long> getLimitSpreadForValidOrders() {
+		return limitSpreadForValidOrders;
+	}
+
+	public void setLimitSpreadForValidOrders(HashMap<BigDecimal, Long> limitSpreadForValidOrders) {
+		this.limitSpreadForValidOrders = limitSpreadForValidOrders;
+	}
+
+	public HashMap<BigDecimal, Long> getLimitSpreadForInValidOrders() {
+		return limitSpreadForInValidOrders;
+	}
+
+	public void setLimitSpreadForInValidOrders(HashMap<BigDecimal, Long> limitSpreadForInValidOrders) {
+		this.limitSpreadForInValidOrders = limitSpreadForInValidOrders;
+	}
+
 	public long getOrderId() {
 		return orderId;
 	}

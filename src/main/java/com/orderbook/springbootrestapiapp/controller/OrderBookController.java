@@ -12,15 +12,12 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.orderbook.springbootrestapiapp.common.Status;
 import com.orderbook.springbootrestapiapp.orderbook.business.OrderManagement;
 import com.orderbook.springbootrestapiapp.vo.Execution;
-import com.orderbook.springbootrestapiapp.vo.OrderBook;
 import com.orderbook.springbootrestapiapp.vo.OrderBookStatistics;
 import com.orderbook.springbootrestapiapp.vo.OrderDetails;
 import com.orderbook.springbootrestapiapp.vo.OrderStatistics;
 
-import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiOperation;
 
 @RestController
@@ -31,11 +28,11 @@ public class OrderBookController {
 	@Autowired
 	private OrderManagement orderMgmt;
 
-	@RequestMapping(method = RequestMethod.POST, value = "/orderBook")
+	@RequestMapping(method = RequestMethod.POST, value = "/orderBook/{instId}")
 	@ResponseBody
 	@ApiOperation(value = "API to create an OrderBook")
-	public ResponseEntity<String> createOrderBook(@RequestBody OrderBook orderBook) {
-		orderMgmt.createOrderBook(orderBook);
+	public ResponseEntity<String> createOrderBook(@PathVariable("instId") long instrumentId) {
+		orderMgmt.createOrderBook(instrumentId);
 		logger.info("OrderBook Created!!");
 		return ResponseEntity.status(HttpStatus.CREATED).build();
 	}
@@ -85,5 +82,11 @@ public class OrderBookController {
 		OrderBookStatistics orderBookStats = orderMgmt.getStatistics(orderBookId);
 		return ResponseEntity.status(HttpStatus.OK).body(orderBookStats);
 	}
+	
+	@RequestMapping("/wait-process")
+    public String pause() throws InterruptedException {
+        Thread.sleep(10000);
+        return "Process finished";
+    }
 
 }

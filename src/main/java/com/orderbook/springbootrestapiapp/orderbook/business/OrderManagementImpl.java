@@ -3,8 +3,6 @@ package com.orderbook.springbootrestapiapp.orderbook.business;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 
@@ -14,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.orderbook.springbootrestapiapp.common.OrderStatus;
+import com.orderbook.springbootrestapiapp.common.OrderType;
 import com.orderbook.springbootrestapiapp.common.Status;
 import com.orderbook.springbootrestapiapp.data.OrderBookExecutionRepository;
 import com.orderbook.springbootrestapiapp.data.OrderBookRepository;
@@ -66,12 +65,19 @@ public class OrderManagementImpl implements OrderManagement {
 	 * @return OrderBook
 	 */
 	@Override
-	public OrderBook createOrderBook(OrderBook orderBook) {
-		// TODO Auto-generated method stub
+	public OrderBook createOrderBook(Long instrumentId) throws OrderBookException {
 
-		orderBook.setOrderBookstatus(Status.OPEN.toString());
-		orderBookRepository.save(orderBook);
-		return orderBook;
+		OrderBook orderBook = orderBookRepository.getByInstId(instrumentId);
+		if (orderBook == null) {
+			orderBook = new OrderBook();
+			orderBook.setInstId(instrumentId);
+			orderBook.setOrderBookstatus(Status.OPEN);
+			orderBookRepository.save(orderBook);
+			return orderBook;
+		} else {
+			throw new OrderBookException("OrderBook already exists with Instrument ID  : " + instrumentId);
+		}
+
 	}
 
 	/**
@@ -84,17 +90,26 @@ public class OrderManagementImpl implements OrderManagement {
 	 */
 	@Override
 	public synchronized OrderDetails addOrders(OrderDetails orderDetails, long orderBookId) {
-		// TODO Auto-generated method stub
+
 		OrderBook savedOrderBook = orderBookRepository.getByOrderBookId(orderBookId);
 
-		OrderDetails orders = OrderDetails.builder().orderId(orderDetails.getOrderId())
-				.orderQuantity(orderDetails.getOrderQuantity()).orderDate(orderDetails.getOrderDate())
-				.orderPrice(orderDetails.getOrderPrice()).orderStatus(OrderStatus.VALID.toString())
-				.orderBook(savedOrderBook).build();
+		if (!savedOrderBook.getOrderBookstatus().toString().equals(Status.OPEN.toString()))
+			throw new OrderBookException(
+					"OrderBook must be in Open state for Orders to be added" + savedOrderBook.getOrderBookstatus());
+		OrderDetails orders;
 
-		if (savedOrderBook.getOrderBookstatus().equalsIgnoreCase(Status.OPEN.toString())) {
-			orderRepository.save(orders);
-		}
+		if (null == orderDetails.getOrderPrice() || orderDetails.getOrderPrice().compareTo(new BigDecimal(0.00)) == 0)
+			orders = OrderDetails.builder().orderId(orderDetails.getOrderId())
+					.orderQuantity(orderDetails.getOrderQuantity()).orderDate(orderDetails.getOrderDate())
+					.orderPrice(orderDetails.getOrderPrice()).orderStatus(OrderStatus.VALID).orderBook(savedOrderBook)
+					.orderType(OrderType.MARKET).build();
+		else
+			orders = OrderDetails.builder().orderId(orderDetails.getOrderId())
+					.orderQuantity(orderDetails.getOrderQuantity()).orderDate(orderDetails.getOrderDate())
+					.orderPrice(orderDetails.getOrderPrice()).orderStatus(OrderStatus.VALID).orderBook(savedOrderBook)
+					.orderType(OrderType.LIMIT).build();
+
+		orderRepository.save(orders);
 
 		return orders;
 	}
@@ -111,9 +126,16 @@ public class OrderManagementImpl implements OrderManagement {
 	public String closeOrderBook(long orderBookId) {
 		// TODO Auto-generated method stub
 		OrderBook orderBookToBeClosed = orderBookRepository.getByOrderBookId(orderBookId);
-		orderBookToBeClosed.setOrderBookstatus(Status.CLOSED.toString());
-		orderBookRepository.save(orderBookToBeClosed);
-		return orderBookToBeClosed.getOrderBookstatus().toString();
+		if (orderBookToBeClosed.getOrderBookstatus().equals(Status.OPEN)) {
+			// Only if the OrderBook is in Open Status that it can be closed
+			orderBookToBeClosed.setOrderBookstatus(Status.CLOSED);
+			orderBookRepository.save(orderBookToBeClosed);
+			return orderBookToBeClosed.getOrderBookstatus().toString();
+		} else {
+			throw new OrderBookException(
+					"OrderBookstatus is not Open for it to be Closed :  " + orderBookToBeClosed.getOrderBookstatus());
+		}
+
 	}
 
 	/**
@@ -130,13 +152,27 @@ public class OrderManagementImpl implements OrderManagement {
 	public OrderBook addExecutions(Execution execution, long orderBookId) {
 
 		OrderBook savedOrderBook = orderBookRepository.getByOrderBookId(orderBookId);
-		execution.setOrderBook(savedOrderBook);
-		if (savedOrderBook.getOrderBookstatus().equalsIgnoreCase(Status.CLOSED.toString())) {
-			executionRepository.save(execution);
-			updateOrdersAfterExecution(execution.getExecutionId());
-		}
+		List<Execution> exec = executionRepository.getAllExecutionsById(orderBookId);
 
+		if (null == exec || exec.isEmpty()) {
+			if (savedOrderBook.getOrderBookstatus().toString().equalsIgnoreCase(Status.CLOSED.toString()))
+				persistExecution(execution, savedOrderBook);
+
+		} else {
+			if (savedOrderBook.getOrderBookstatus().equals(Status.EXECUTED))
+				return savedOrderBook;
+			else
+				persistExecution(execution, savedOrderBook);
+		}
 		return savedOrderBook;
+	}
+
+	private void persistExecution(Execution execution, OrderBook orderBook) {
+
+		execution.setOrderBook(orderBook);
+		executionRepository.save(execution);
+		updateOrdersAfterExecution(execution.getExecutionId());
+
 	}
 
 	private void updateOrdersAfterExecution(long execId) {
@@ -144,32 +180,62 @@ public class OrderManagementImpl implements OrderManagement {
 		Execution exec = executionRepository.getByExecutionId(execId);
 		BigDecimal executionPrice = exec.getExecutionPrice();
 		long executionQuantity = exec.getExecutionQuantity();
-		long[] accOrderQuantity = { 0 };
+		long accOrderQuantity = 0;
 		OrderBook savedOrderBook = orderBookRepository.getByOrderBookId(exec.getOrderBook().getOrderBookId());
 		List<OrderDetails> orders = orderRepository.getAllOrdersById(exec.getOrderBook().getOrderBookId());
 		List<OrderDetails> validOrders = new ArrayList<OrderDetails>();
 		// Invalidate Orders for which the Order Price is Less than the Execution Price
 		// when the Execution is applied
-		orders.forEach((orderDetails) -> {
-			if (!(orderDetails.getOrderPrice().compareTo(new BigDecimal(0.00)) == 0)) {
-				if (!(orderDetails.getOrderPrice().compareTo(executionPrice) == 1)) {
-					OrderDetails.builder().orderStatus(OrderStatus.INVALID.toString());
-					orderRepository.updateOrdersById(orderDetails.getOrderId());
-				} else {
-					accOrderQuantity[0] += orderDetails.getOrderQuantity();
-					validOrders.add(orderDetails);
-				}
-			}
-		});
 
-		if (accOrderQuantity[0] > executionQuantity)
-			computeLinearDistribution(validOrders, executionQuantity, accOrderQuantity[0]);
-		else if (accOrderQuantity[0] == executionQuantity) {
-			savedOrderBook.setOrderBookstatus(Status.EXECUTED.toString());
-			orderBookRepository.save(savedOrderBook);
+		for (OrderDetails orderDetls : orders) {
+
+			if (orderDetls.getOrderPrice().compareTo(new BigDecimal(0.00)) == 0) {
+				orderRepository.updateOrderExecQuantityById(0, orderDetls.getOrderId());
+				continue;
+			} else if (orderDetls.getOrderPrice().compareTo(executionPrice) == -1) {
+				OrderDetails.builder().orderStatus(OrderStatus.INVALID).build();
+				orderRepository.updateOrdersById(orderDetls.getOrderId());
+				orderRepository.updateOrderExecQuantityById(0, orderDetls.getOrderId());
+			} else {
+				validOrders.add(orderDetls);
+				accOrderQuantity += orderDetls.getOrderQuantity();
+			}
+
 		}
+
+		computeLinearDistribution(validOrders, executionQuantity, accOrderQuantity);
+		computeValidDemand(savedOrderBook.getOrderBookId(), exec);
 		logger.info(orders.size());
 
+	}
+
+	/**
+	 * Method for computing whether the OrderBook needs to be updated to Executed
+	 * 
+	 * @param orderBookId
+	 * @param execution
+	 */
+	private void computeValidDemand(long orderBookId, Execution execution) {
+
+		long executionQuantity = execution.getExecutionQuantity();
+		long accOrderQuantity = 0;
+		List<OrderDetails> orderDetails = orderRepository.getAllOrdersById(orderBookId);
+		OrderBook orderBookToBeExecuted = orderBookRepository.getByOrderBookId(orderBookId);
+
+		for (OrderDetails orders : orderDetails) {
+			if (orders.getOrderPrice().compareTo(new BigDecimal(0.00)) == 0)
+				continue;
+			else {
+				if (orders.getOrderStatus().equals(OrderStatus.VALID))
+					accOrderQuantity += orders.getOrderQuantity();
+			}
+		}
+		/* Only if the accumulatedOrder Quantity == Execution Quantity that a Demand
+		 becomes Valid and the OrderBook can be executed */
+		if (accOrderQuantity == executionQuantity) {
+			orderBookToBeExecuted.setOrderBookstatus(Status.EXECUTED);
+			orderBookRepository.save(orderBookToBeExecuted);
+		}
 	}
 
 	/**
@@ -183,15 +249,45 @@ public class OrderManagementImpl implements OrderManagement {
 	private void computeLinearDistribution(List<OrderDetails> orders, long executionQuantity, Long accOrderQuantity) {
 
 		long computedExecQuant = 0;
+		long sumOfApproxExecQuant = 0;
+		
+		if(accOrderQuantity == 0)
+			throw new OrderBookException(
+					"OrderBook must contain atleast one Valid Limit Order for Linear Distribution: accOrderQuantity =>" + accOrderQuantity);
+
 		BigDecimal simpleRatio = BigDecimal.valueOf(executionQuantity).divide(BigDecimal.valueOf(accOrderQuantity), 2,
 				RoundingMode.HALF_UP);
 		for (OrderDetails orderDtls : orders) {
 			computedExecQuant = BigDecimal.valueOf(orderDtls.getOrderQuantity()).multiply(simpleRatio).longValue();
-			OrderDetails.builder().orderExecQuantity(computedExecQuant);
-			orderRepository.save(orderDtls);
+			logger.info("Computed value = " + computedExecQuant);
+			sumOfApproxExecQuant += computedExecQuant;
+			if (null == orderDtls.getOrderExecQuantity()) {
+				OrderDetails.builder().orderExecQuantity(computedExecQuant).build();
+			} else {
+				computedExecQuant += orderDtls.getOrderExecQuantity();
+			}
+			orderRepository.updateOrderExecQuantityById(computedExecQuant, orderDtls.getOrderId());
 			computedExecQuant = 0;
-
 		}
+		long orderBookId = orders.get(0).getOrderBook().getOrderBookId();
+		long diff = Math.abs(sumOfApproxExecQuant - executionQuantity);
+		// Fetching the Limit Orders which are Valid
+		List<OrderDetails> validLimitOrders = orderRepository.getValidLimitOrders(orderBookId);
+		validLimitOrders.sort((a, b) -> b.getOrderExecQuantity().compareTo(a.getOrderExecQuantity()));
+
+		/*
+		 * Handling the left over execution Quantity and allocating the remaining
+		 * Execution Quantity to the Orders in the descending Order of their Quantity
+		 */
+		for (OrderDetails order : validLimitOrders) {
+
+			if (diff > 0) {
+				diff--;
+				orderRepository.updateOrderExecQuantityById(order.getOrderExecQuantity() + 1, order.getOrderId());
+			} else
+				break;
+		}
+
 	}
 
 	/**
@@ -209,17 +305,20 @@ public class OrderManagementImpl implements OrderManagement {
 		OrderStatistics orderStats = new OrderStatistics();
 		Execution execution = executionRepository.getByExecutionId(orderBookId);
 		List<OrderDetails> orders = orderRepository.getAllOrdersById(orderBookId);
-
-		orders.forEach((orderDetails) -> {
-			if (orderDetails.getOrderId() == orderId) {
-				orderStats.setOrderStatus(orderDetails.getOrderStatus());
-				orderStats.setOrderPrice(orderDetails.getOrderPrice());
-				orderStats.setComputedExecQuantity(orderDetails.getOrderQuantity());
-				orderStats.setExecutionPrice(execution.getExecutionPrice());
-			}
-		});
-
-		return orderStats;
+		if (null == orders || orders.isEmpty()) {
+			throw new OrderBookException(
+					"To fetch Order Details atleast one order must be added to the Book:  => orderList = " + orders);
+		} else {
+			orders.forEach((orderDetails) -> {
+				if (orderDetails.getOrderId() == orderId) {
+					orderStats.setOrderStatus(orderDetails.getOrderStatus());
+					orderStats.setOrderPrice(orderDetails.getOrderPrice());
+					orderStats.setComputedExecQuantity(orderDetails.getOrderExecQuantity());
+					orderStats.setExecutionPrice(execution.getExecutionPrice());
+				}
+			});
+			return orderStats;
+		}
 	}
 
 	/**
@@ -238,6 +337,13 @@ public class OrderManagementImpl implements OrderManagement {
 		OrderBookStatistics orderBookStats = new OrderBookStatistics();
 		List<OrderDetails> orders = orderRepository.getAllOrdersById(orderBookId);
 		List<Execution> executions = executionRepository.getAllExecutionsById(orderBookId);
+
+		if (null == orders || orders.isEmpty())
+			new OrderBookException(
+					"To get OrderBook Statistics Order Details List must be non-empty  => orderList = " + orders);
+		if (null == executions || executions.isEmpty())
+			new OrderBookException(
+					"To compute valid/Invalid Orders Execution List must be non-empty => executions =  " + orders);
 		int numOfValidOrders = 0;
 		int numOfInvalidOrders = 0;
 		long accumulatedOrderQuant = 0;
@@ -252,36 +358,22 @@ public class OrderManagementImpl implements OrderManagement {
 		computeLimitPriceSpread(orderBookStats, orders);
 
 		// Sort on Date field for computing Earliest and Latest Order Entry
-		Collections.sort(orders, new Comparator<OrderDetails>() {
-			@Override
-			public int compare(OrderDetails o1, OrderDetails o2) {
-				if (o1.getOrderDate() == null || o2.getOrderDate() == null)
-					return 0;
-				return o1.getOrderDate().compareTo(o2.getOrderDate());
-			}
-		});
-		orderBookStats.setEarliestOrder(orders.get(0));
-		orderBookStats.setLatestOrder(orders.get(orders.size() - 1));
+		orders.sort((a, b) -> b.getOrderDate().compareTo(a.getOrderDate()));
+		orderBookStats.setEarliestOrder(orders.get(orders.size() - 1));
+		orderBookStats.setLatestOrder(orders.get(0));
 
 		// Computing the number of Orders in the OrderBook
 		orderBookStats.setAmtOfOrders(orders.size());
 
 		// Sort on Quantity Field to get the Biggest Order and Smallest Order
-		Collections.sort(orders, new Comparator<OrderDetails>() {
-			@Override
-			public int compare(OrderDetails o1, OrderDetails o2) {
-				if (o1.getOrderQuantity() == null || o2.getOrderQuantity() == null)
-					return 0;
-				return o1.getOrderQuantity().compareTo(o2.getOrderQuantity());
-			}
-		});
-		orderBookStats.setBiggestOrder(orders.get(orders.size() - 1));
-		orderBookStats.setSmallestOrder(orders.get(0));
+		orders.sort((a, b) -> b.getOrderQuantity().compareTo(a.getOrderQuantity()));
+		orderBookStats.setBiggestOrder(orders.get(0));
+		orderBookStats.setSmallestOrder(orders.get(orders.size() - 1));
 
 		// Computing number of Valid Orders and Invalid Orders
 		for (OrderDetails orderDetls : orders) {
 
-			if (orderDetls.getOrderStatus().equalsIgnoreCase(OrderStatus.VALID.toString())) {
+			if (orderDetls.getOrderStatus().toString().equalsIgnoreCase(OrderStatus.VALID.toString())) {
 				numOfValidOrders++;
 				accumulatedOrderQuant += orderDetls.getOrderQuantity();
 			} else {
@@ -305,17 +397,29 @@ public class OrderManagementImpl implements OrderManagement {
 	private void computeLimitPriceSpread(OrderBookStatistics orderBookStats, List<OrderDetails> orders) {
 
 		HashMap<BigDecimal, Long> limitSpread = new HashMap<BigDecimal, Long>();
+		HashMap<BigDecimal, Long> limitSpreadForValidOrders = new HashMap<BigDecimal, Long>();
+		HashMap<BigDecimal, Long> limitSpreadForInValidOrders = new HashMap<BigDecimal, Long>();
 		long quantity = 0;
 		for (OrderDetails dtls : orders) {
-			if (!limitSpread.containsKey(dtls.getOrderPrice()))
+			if (!limitSpread.containsKey(dtls.getOrderPrice())) {
 				limitSpread.put(dtls.getOrderPrice(), dtls.getOrderQuantity());
-			else {
+				if (dtls.getOrderStatus().equals(OrderStatus.VALID))
+					limitSpreadForValidOrders.put(dtls.getOrderPrice(), dtls.getOrderQuantity());
+				else
+					limitSpreadForInValidOrders.put(dtls.getOrderPrice(), dtls.getOrderQuantity());
+			} else {
 				quantity = limitSpread.get(dtls.getOrderPrice()) + dtls.getOrderQuantity();
 				limitSpread.put(dtls.getOrderPrice(), quantity);
+				if (dtls.getOrderStatus().equals(OrderStatus.VALID))
+					limitSpreadForValidOrders.put(dtls.getOrderPrice(), dtls.getOrderQuantity());
+				else
+					limitSpreadForInValidOrders.put(dtls.getOrderPrice(), dtls.getOrderQuantity());
 			}
 		}
-
+		quantity = 0;
 		orderBookStats.setLimitSpread(limitSpread);
+		orderBookStats.setLimitSpreadForValidOrders(limitSpreadForValidOrders);
+		orderBookStats.setLimitSpreadForInValidOrders(limitSpreadForInValidOrders);
 	}
 
 }

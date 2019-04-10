@@ -10,7 +10,7 @@ public interface OrderManagement {
 
 	public OrderBook addExecutions(Execution execution, long id);
 
-	public OrderBook createOrderBook(OrderBook orderBook);
+	public OrderBook createOrderBook(Long instrumentId);
 
 	public String closeOrderBook(long id);
 

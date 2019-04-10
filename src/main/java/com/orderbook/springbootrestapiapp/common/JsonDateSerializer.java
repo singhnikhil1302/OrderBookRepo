@@ -1,8 +1,8 @@
 package com.orderbook.springbootrestapiapp.common;
 
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 import org.springframework.stereotype.Component;
 
@@ -11,15 +11,14 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 
 @Component
-public class JsonDateSerializer extends JsonSerializer<Date> {
+public class JsonDateSerializer extends JsonSerializer<LocalDate> {
 	
-	private static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-
+	private static final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+	
+	
 	@Override
-	public void serialize(Date dt, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-		// TODO Auto-generated method stub
-		String formattedDate = dateFormat.format(dt);
-		System.out.println(formattedDate);
-		gen.writeString(formattedDate);
+	public void serialize(LocalDate value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
+		gen.writeString(value.format(dateFormat));
+		
 	}
 }

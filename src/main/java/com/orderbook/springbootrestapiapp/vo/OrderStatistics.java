@@ -2,17 +2,27 @@ package com.orderbook.springbootrestapiapp.vo;
 
 import java.math.BigDecimal;
 
+import com.orderbook.springbootrestapiapp.common.OrderStatus;
+
 public class OrderStatistics {
 
 	private long computedExecQuantity;
 
 	private long orderId;
 	
-	private String orderStatus;
+	private OrderStatus orderStatus;
 	
 	private BigDecimal orderPrice;
 	
 	private BigDecimal executionPrice;
+
+	public OrderStatus getOrderStatus() {
+		return orderStatus;
+	}
+
+	public void setOrderStatus(OrderStatus orderStatus) {
+		this.orderStatus = orderStatus;
+	}
 
 	public long getComputedExecQuantity() {
 		return computedExecQuantity;
@@ -28,14 +38,6 @@ public class OrderStatistics {
 
 	public void setOrderId(long orderId) {
 		this.orderId = orderId;
-	}
-
-	public String getOrderStatus() {
-		return orderStatus;
-	}
-
-	public void setOrderStatus(String orderStatus) {
-		this.orderStatus = orderStatus;
 	}
 
 	public BigDecimal getOrderPrice() {

@@ -14,8 +14,14 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.orderbook.springbootrestapiapp.common.JsonDateDeserializer;
 import com.orderbook.springbootrestapiapp.common.JsonDateSerializer;
+import com.orderbook.springbootrestapiapp.common.OrderStatus;
+import com.orderbook.springbootrestapiapp.common.OrderType;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -66,6 +72,7 @@ public class OrderDetails implements Serializable {
 
 	@Getter
 	@Setter(value = AccessLevel.PRIVATE)
+	@JsonFormat(pattern="yyyy-MM-dd")
 	@JsonSerialize(using = JsonDateSerializer.class)
 	@Column(name = "ORDER_DATE")
 	LocalDate orderDate;
@@ -78,12 +85,17 @@ public class OrderDetails implements Serializable {
 	@Getter
 	@Setter(value = AccessLevel.PRIVATE)
 	@Column(name = "ORDER_STATUS")
-	String orderStatus;
+	OrderStatus orderStatus;
 
 	@Getter
 	@Setter(value = AccessLevel.PRIVATE)
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "ORDERBOOK_ID", nullable = false)
 	OrderBook orderBook;
+	
+	@Getter
+	@Setter(value = AccessLevel.PRIVATE)
+	@Column(name = "ORDER_TYPE")
+	OrderType orderType;
 
 }
