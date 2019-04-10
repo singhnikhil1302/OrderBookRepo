@@ -176,4 +176,16 @@ public class OrderBookControllerTest {
 		assertEquals(expected, result.getResponse().getContentAsString());
 		JSONAssert.assertEquals(expected, result.getResponse().getContentAsString(), false);
 	}
+
+	@Test
+	public void givenOrderBookId_thenGetOrderBookStats() throws Exception {
+
+		OrderBookStatistics orderStats = new OrderBookStatistics();
+		Mockito.when(orderMgmt.getStatistics(Mockito.anyLong())).thenReturn(orderStats);
+		RequestBuilder requestBuilder = MockMvcRequestBuilders.get("/orderBook/100000")
+				.accept(MediaType.APPLICATION_JSON);
+
+		mockMvc.perform(requestBuilder).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON));
+
+	}
 }
