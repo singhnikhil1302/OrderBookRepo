@@ -124,7 +124,7 @@ public class OrderManagementImpl implements OrderManagement {
 	 */
 	@Override
 	public String closeOrderBook(long orderBookId) {
-		// TODO Auto-generated method stub
+		
 		OrderBook orderBookToBeClosed = orderBookRepository.getByOrderBookId(orderBookId);
 		if (orderBookToBeClosed.getOrderBookstatus().equals(Status.OPEN)) {
 			// Only if the OrderBook is in Open Status that it can be closed
