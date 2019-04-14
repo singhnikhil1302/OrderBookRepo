@@ -124,7 +124,7 @@ public class OrderManagementImpl implements OrderManagement {
 	 */
 	@Override
 	public String closeOrderBook(long orderBookId) {
-		
+
 		OrderBook orderBookToBeClosed = orderBookRepository.getByOrderBookId(orderBookId);
 		if (orderBookToBeClosed.getOrderBookstatus().equals(Status.OPEN)) {
 			// Only if the OrderBook is in Open Status that it can be closed
@@ -152,19 +152,27 @@ public class OrderManagementImpl implements OrderManagement {
 	public OrderBook addExecutions(Execution execution, long orderBookId) {
 
 		OrderBook savedOrderBook = orderBookRepository.getByOrderBookId(orderBookId);
-		List<Execution> exec = executionRepository.getAllExecutionsById(orderBookId);
+		List<Execution> execList = executionRepository.getAllExecutionsById(orderBookId);
 
-		if (null == exec || exec.isEmpty()) {
+		if (null == execList || execList.isEmpty()) {
 			if (savedOrderBook.getOrderBookstatus().toString().equalsIgnoreCase(Status.CLOSED.toString()))
 				persistExecution(execution, savedOrderBook);
 
 		} else {
 			if (savedOrderBook.getOrderBookstatus().equals(Status.EXECUTED))
 				return savedOrderBook;
-			else
+			else {
+				for (Execution exec : execList) {
+					if (exec.getExecutionPrice().compareTo(execution.getExecutionPrice()) != 0)
+						throw new OrderBookException("Execution Price should be same across all executions :  "
+								+ execution.getExecutionPrice() + " != " + exec.getExecutionPrice());
+				}
 				persistExecution(execution, savedOrderBook);
+			}
+
 		}
 		return savedOrderBook;
+
 	}
 
 	private void persistExecution(Execution execution, OrderBook orderBook) {
@@ -230,8 +238,10 @@ public class OrderManagementImpl implements OrderManagement {
 					accOrderQuantity += orders.getOrderQuantity();
 			}
 		}
-		/* Only if the accumulatedOrder Quantity == Execution Quantity that a Demand
-		 becomes Valid and the OrderBook can be executed */
+		/*
+		 * Only if the accumulatedOrder Quantity == Execution Quantity that a Demand
+		 * becomes Valid and the OrderBook can be executed
+		 */
 		if (accOrderQuantity == executionQuantity) {
 			orderBookToBeExecuted.setOrderBookstatus(Status.EXECUTED);
 			orderBookRepository.save(orderBookToBeExecuted);
@@ -250,10 +260,11 @@ public class OrderManagementImpl implements OrderManagement {
 
 		long computedExecQuant = 0;
 		long sumOfApproxExecQuant = 0;
-		
-		if(accOrderQuantity == 0)
+
+		if (accOrderQuantity == 0)
 			throw new OrderBookException(
-					"OrderBook must contain atleast one Valid Limit Order for Linear Distribution: accOrderQuantity =>" + accOrderQuantity);
+					"OrderBook must contain atleast one Valid Limit Order for Linear Distribution: accOrderQuantity =>"
+							+ accOrderQuantity);
 
 		BigDecimal simpleRatio = BigDecimal.valueOf(executionQuantity).divide(BigDecimal.valueOf(accOrderQuantity), 2,
 				RoundingMode.HALF_UP);
